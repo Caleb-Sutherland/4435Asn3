@@ -1,0 +1,22 @@
+syntax = "proto3";
+package consistenthash;
+
+
+option go_package = "proto/consistenthash.proto;consistenthash_proto";
+
+service ConsistentHash {
+    rpc TestConnection (TestRequest) returns (GenericResponse) {}
+    rpc ComputeFingerTable (Empty) returns (GenericResponse) {}
+}
+
+message TestRequest {
+    string message = 1;
+}
+
+message GenericResponse {
+    string message = 1;
+}
+
+message Empty {
+
+}
