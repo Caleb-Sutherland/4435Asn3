@@ -30,19 +30,24 @@ type node struct {
 
 	// used to make requests
 	Clients map[string]pb.ConsistentHashClient
-
 	// track the number of clients
 	NumClients int
 
+	RingClients []string
 	// ring size
 	ringSize int
 
 	// finger table size
 	fingerTableSize int
+	fingerTable [] fingerTableEntry
 }
 
-const fingerTableSize int = 10 // Also known as 'm' when reading about consistent hashing
-const ringSize int = (2 ^ fingerTableSize) - 1
+type fingerTableEntry struct{
+	i int
+	id2i int
+	succ int
+}
+
 
 /* RPC functions */
 // Test connection with a client
@@ -75,15 +80,12 @@ func main() {
 	sdaddress := args[2]
 
 	// Stores all information about the server in a struct
-	noden := node{Name: node_name, Addr: port, SDAddress: sdaddress, Clients: nil, ringSize: ringSize, fingerTableSize: fingerTableSize}
+
+
+	noden := node{Name: node_name, Addr: port, SDAddress: sdaddress, Clients: nil, RingClients: nil, ringSize: (2 ^ 10) - 1, fingerTableSize: 10, fingerTable: nil}
 
 	// start the node
 	noden.Start()
-
-	// Loop to wait for any commands
-	for {
-		time.Sleep(1 * time.Second)
-	}
 }
 
 /* Setup functions from sample code */
@@ -99,12 +101,61 @@ func (n *node) Start() {
 	// register with the service discovery unit
 	n.registerService()
 
-	// connect to all other nodes on the consul
-	fmt.Println("Waiting 5 seconds...")
-	time.Sleep(5 * time.Second)
-	n.ConnectToAllNodes()
+	//Hash this nodes own id
+	ringId := n.HashString(n.Name)
+	n.RingClients = make([]string, n.ringSize)
+	n.RingClients[ringId] = n.Name
+	n.fingerTable = make([]fingerTableEntry, n.fingerTableSize)
 
-	fmt.Println("NUMBER OF NODES ON THE NETWORK: ", n.NumClients)
+
+	// connect to all other nodes on the consul
+	for{
+		fmt.Println("...")
+		time.Sleep(5 * time.Second)
+
+		prevNumClients := n.NumClients
+		n.ConnectToAllNodes()
+
+		fmt.Println("NUMBER OF NODES ON THE NETWORK: ", n.NumClients)
+		time.Sleep(3*time.Second)
+
+		if (prevNumClients==n.NumClients){ continue }
+
+		fmt.Println("recomputing finger tables")
+		//num clients has changed, recompute finger tables
+		for index := 0; index<n.fingerTableSize; index++{
+			id2index := ringId + (2^index)
+			successor := n.findSuccessorOf(id2index)
+			n.fingerTable[index] = fingerTableEntry{i: index, id2i: id2index, succ: successor}
+			
+		}
+		fmt.Println("recomputed.")
+		//HANDLE
+	}
+	
+}
+func (n *node) findSuccessorOf(id int) (successor int){
+	
+	prevRingID:= -1
+	for ringID, _ := range n.RingClients {
+		if(ringID > id){
+			if (prevRingID==-1){ 
+				prevRingID=ringID 
+				break
+			}
+			return prevRingID
+		}
+		prevRingID=ringID
+	}
+
+	for ringID, _ := range n.RingClients{
+		if(ringID > id){
+			return prevRingID
+		}
+		prevRingID=ringID
+	}
+
+	return -1
 }
 
 // Register self with the service discovery module.
@@ -153,7 +204,7 @@ func (n *node) StartListening() {
 // Busy Work module, greet every new member you find
 func (n *node) ConnectToAllNodes() {
 	// Get all nodes registered to the consul (with csuthe as the name)
-	kvpairs, _, err := n.SDKV.List("csuthe", nil)
+	kvpairs, _, err := n.SDKV.List("jmaxwe29", nil)
 	if err != nil {
 		log.Panicln(err)
 		return
@@ -187,4 +238,5 @@ func (n *node) SetupClient(name string, addr string) {
 	//defer conn.Close()
 	fmt.Println(name)
 	n.Clients[name] = pb.NewConsistentHashClient(conn)
+	n.RingClients[n.HashString(name)] = name
 }
