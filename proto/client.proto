@@ -1,0 +1,20 @@
+syntax = "proto3";
+package client;
+
+
+option go_package = "proto/client.proto;client_proto";
+
+service ClientReceiveService {
+    rpc ReceiveFile(stream UploadFileRequest) returns(UploadStatus) {}
+}
+
+message UploadFileRequest {
+    oneof data {
+        string filename = 1;
+        bytes chunk_data = 2;
+    }
+}
+
+message UploadStatus {
+    string Message = 1;
+}

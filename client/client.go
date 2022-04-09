@@ -14,6 +14,51 @@ import (
 
 	"google.golang.org/grpc"
 )
+type clientserver struct{
+	pb.UnimplementedClientReceiveServiceServer
+}
+
+func (c *clientserver) ReceiveFile(stream pb.ClientReceiveService_ReceiveFileServer) error {
+	req, err := stream.Recv()
+	if err != nil{
+		fmt.Println("Could not receive file from node")
+		return erros.New("failed to upload file")
+	}
+	fileData := bytes.Buffer{}
+	filename := req.GetFilename()
+	fmt.Println("RECEIVING: " + filename)
+
+	for {
+		fmt.Println("waiting to recieve more data...")
+		req, err := stream.Recv()
+		if err == io.EOF {
+			fmt.Println("End of file reached!")
+			break
+		}
+
+		if err != nil {
+			return errors.New("error uploading file")
+		}
+
+		chunk := req.GetChunkData()
+		_, err = fileData.Write((chunk))
+		if err != nil {
+			return errors.New("error writing the file to buffer")
+		}
+
+		fmt.Println(string(chunk))	
+	}
+
+	err = stream.SendAndClose(&pb.UploadStatus{Message: "Closing the stream"})
+	if err != nil {
+		return errors.New("error closing the stream")
+	}
+
+	fmt.Println(filename + " successfully uploaded!")
+	return nil
+
+}
+
 
 func main() {
 
@@ -38,6 +83,11 @@ func main() {
 	defer cancel()
 
 	response, _ := client.TestConnection(ctx, &pb.TestRequest{Message: "Hello"})
+
+	//Set up client server
+	c := grpc.NewServer()
+	pb.RegisterClientReceiveServiceServer(c, &clientserver{})
+
 	fmt.Println(response)
 	fmt.Print("\nWelcome to the consistent hashing network...\nType 'search <filename>' to find a file\nType 'add <filename> to add a file\n\n")
 	reader := bufio.NewReader(os.Stdin)
