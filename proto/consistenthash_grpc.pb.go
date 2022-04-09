@@ -23,9 +23,12 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ConsistentHashClient interface {
 	TestConnection(ctx context.Context, in *TestRequest, opts ...grpc.CallOption) (*GenericResponse, error)
-	// rpc ComputeFingerTable (Empty) returns (GenericResponse) {}
 	AddFile(ctx context.Context, opts ...grpc.CallOption) (ConsistentHash_AddFileClient, error)
 	NotifyNewNodeAdded(ctx context.Context, in *NodeInfo, opts ...grpc.CallOption) (*NodeInfoResponse, error)
+	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*GetFileResponse, error)
+	GetNodeInfo(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*NodeInfo, error)
+	UpdateSuccessor(ctx context.Context, in *UpdateNeighbourRequest, opts ...grpc.CallOption) (*UpdateNeighbourResponse, error)
+	UpdatePredecessor(ctx context.Context, in *UpdateNeighbourRequest, opts ...grpc.CallOption) (*UpdateNeighbourResponse, error)
 }
 
 type consistentHashClient struct {
@@ -88,14 +91,53 @@ func (c *consistentHashClient) NotifyNewNodeAdded(ctx context.Context, in *NodeI
 	return out, nil
 }
 
+func (c *consistentHashClient) GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*GetFileResponse, error) {
+	out := new(GetFileResponse)
+	err := c.cc.Invoke(ctx, "/consistenthash.ConsistentHash/GetFile", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *consistentHashClient) GetNodeInfo(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*NodeInfo, error) {
+	out := new(NodeInfo)
+	err := c.cc.Invoke(ctx, "/consistenthash.ConsistentHash/GetNodeInfo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *consistentHashClient) UpdateSuccessor(ctx context.Context, in *UpdateNeighbourRequest, opts ...grpc.CallOption) (*UpdateNeighbourResponse, error) {
+	out := new(UpdateNeighbourResponse)
+	err := c.cc.Invoke(ctx, "/consistenthash.ConsistentHash/UpdateSuccessor", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *consistentHashClient) UpdatePredecessor(ctx context.Context, in *UpdateNeighbourRequest, opts ...grpc.CallOption) (*UpdateNeighbourResponse, error) {
+	out := new(UpdateNeighbourResponse)
+	err := c.cc.Invoke(ctx, "/consistenthash.ConsistentHash/UpdatePredecessor", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConsistentHashServer is the server API for ConsistentHash service.
 // All implementations should embed UnimplementedConsistentHashServer
 // for forward compatibility
 type ConsistentHashServer interface {
 	TestConnection(context.Context, *TestRequest) (*GenericResponse, error)
-	// rpc ComputeFingerTable (Empty) returns (GenericResponse) {}
 	AddFile(ConsistentHash_AddFileServer) error
 	NotifyNewNodeAdded(context.Context, *NodeInfo) (*NodeInfoResponse, error)
+	GetFile(context.Context, *GetFileRequest) (*GetFileResponse, error)
+	GetNodeInfo(context.Context, *Empty) (*NodeInfo, error)
+	UpdateSuccessor(context.Context, *UpdateNeighbourRequest) (*UpdateNeighbourResponse, error)
+	UpdatePredecessor(context.Context, *UpdateNeighbourRequest) (*UpdateNeighbourResponse, error)
 }
 
 // UnimplementedConsistentHashServer should be embedded to have forward compatible implementations.
@@ -110,6 +152,18 @@ func (UnimplementedConsistentHashServer) AddFile(ConsistentHash_AddFileServer) e
 }
 func (UnimplementedConsistentHashServer) NotifyNewNodeAdded(context.Context, *NodeInfo) (*NodeInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NotifyNewNodeAdded not implemented")
+}
+func (UnimplementedConsistentHashServer) GetFile(context.Context, *GetFileRequest) (*GetFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFile not implemented")
+}
+func (UnimplementedConsistentHashServer) GetNodeInfo(context.Context, *Empty) (*NodeInfo, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNodeInfo not implemented")
+}
+func (UnimplementedConsistentHashServer) UpdateSuccessor(context.Context, *UpdateNeighbourRequest) (*UpdateNeighbourResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateSuccessor not implemented")
+}
+func (UnimplementedConsistentHashServer) UpdatePredecessor(context.Context, *UpdateNeighbourRequest) (*UpdateNeighbourResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdatePredecessor not implemented")
 }
 
 // UnsafeConsistentHashServer may be embedded to opt out of forward compatibility for this service.
@@ -185,6 +239,78 @@ func _ConsistentHash_NotifyNewNodeAdded_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConsistentHash_GetFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsistentHashServer).GetFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/consistenthash.ConsistentHash/GetFile",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsistentHashServer).GetFile(ctx, req.(*GetFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConsistentHash_GetNodeInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsistentHashServer).GetNodeInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/consistenthash.ConsistentHash/GetNodeInfo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsistentHashServer).GetNodeInfo(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConsistentHash_UpdateSuccessor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNeighbourRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsistentHashServer).UpdateSuccessor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/consistenthash.ConsistentHash/UpdateSuccessor",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsistentHashServer).UpdateSuccessor(ctx, req.(*UpdateNeighbourRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConsistentHash_UpdatePredecessor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNeighbourRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsistentHashServer).UpdatePredecessor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/consistenthash.ConsistentHash/UpdatePredecessor",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsistentHashServer).UpdatePredecessor(ctx, req.(*UpdateNeighbourRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConsistentHash_ServiceDesc is the grpc.ServiceDesc for ConsistentHash service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -199,6 +325,22 @@ var ConsistentHash_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NotifyNewNodeAdded",
 			Handler:    _ConsistentHash_NotifyNewNodeAdded_Handler,
+		},
+		{
+			MethodName: "GetFile",
+			Handler:    _ConsistentHash_GetFile_Handler,
+		},
+		{
+			MethodName: "GetNodeInfo",
+			Handler:    _ConsistentHash_GetNodeInfo_Handler,
+		},
+		{
+			MethodName: "UpdateSuccessor",
+			Handler:    _ConsistentHash_UpdateSuccessor_Handler,
+		},
+		{
+			MethodName: "UpdatePredecessor",
+			Handler:    _ConsistentHash_UpdatePredecessor_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

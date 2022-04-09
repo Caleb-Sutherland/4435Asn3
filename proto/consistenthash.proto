@@ -1,14 +1,26 @@
 syntax = "proto3";
 package consistenthash;
 
-
 option go_package = "proto/consistenthash.proto;consistenthash_proto";
 
 service ConsistentHash {
     rpc TestConnection (TestRequest) returns (GenericResponse) {}
-    // rpc ComputeFingerTable (Empty) returns (GenericResponse) {}
     rpc AddFile (stream UploadFileRequest) returns (UploadStatus) {}
     rpc NotifyNewNodeAdded (NodeInfo) returns (NodeInfoResponse) {}
+    rpc GetFile (GetFileRequest) returns (GetFileResponse) {}
+    rpc GetNodeInfo (Empty) returns (NodeInfo) {}
+    rpc UpdateSuccessor (UpdateNeighbourRequest) returns (UpdateNeighbourResponse) {}
+    rpc UpdatePredecessor (UpdateNeighbourRequest) returns (UpdateNeighbourResponse) {}
+}
+
+// Update Successor or Predecessor with new address
+message UpdateNeighbourRequest {
+    string address = 1;
+    int64 position = 2;
+}
+
+message UpdateNeighbourResponse {
+    string message = 1;
 }
 
 // Testing connection
@@ -53,3 +65,12 @@ message NodeInfoResponse {
     int64 position = 3;
 }
 
+// Request a file from a node
+message GetFileRequest {
+    string filename = 1;
+    string returnAddress = 2;
+}
+
+message GetFileResponse {
+    string message = 1;
+}
