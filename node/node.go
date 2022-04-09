@@ -126,46 +126,138 @@ func (n *node) isNewPredecessor(pos int) bool {
 	return false
 }
 
+// Helper function to determine if a new node is the new predecessor of this node
+func (n *node) BelongsHere(filename string) bool {
+	pos := n.HashString((filename))
+	localPos := n.ringId
+	predPos := n.predecessor.position
+
+	// Common situation where the current node has a larger position than the predecessor node
+	if localPos > predPos && pos <= localPos && pos > predPos {
+		return true
+	}
+
+	// Other situation where predeccesor is at beginning of the ring, so its position is technically larger than this node
+	if localPos < predPos && ((pos > predPos && pos < n.ringSize) || pos <= localPos && pos >= 0) {
+		return true
+	}
+
+	return false
+}
+
 // Add a file to the network
 func (n *node) AddFile(stream pb.ConsistentHash_AddFileServer) error {
+
 	// Recieve the file name
 	req, err := stream.Recv()
 	if err != nil {
 		fmt.Println("Could not recieve the file upload")
 		return errors.New("failed to upload the file")
 	}
-	fileData := bytes.Buffer{}
+
 	filename := req.GetFilename()
-	fmt.Println("RECIEVING: " + filename)
 
-	// Recive the rest of the file
-	for {
-		fmt.Println("waiting to recieve more data...")
-		req, err := stream.Recv()
-		if err == io.EOF {
-			fmt.Println("End of file reached!")
-			break
+	// Determine if the file belongs here, if it does, store it here, otherwise pass it on to the successor
+	if n.BelongsHere(filename) {
+		fileData := bytes.Buffer{}
+		fmt.Println("RECIEVING: " + filename)
+
+		// Recieve the rest of the file
+		for {
+			req, err := stream.Recv()
+			if err == io.EOF {
+				fmt.Println("End of file reached!")
+				break
+			}
+
+			if err != nil {
+				return errors.New("error uploading file")
+			}
+
+			// Get chunk and write it to a buffer so we can save it to a file later
+			chunk := req.GetChunkData()
+			_, err = fileData.Write((chunk))
+			if err != nil {
+				return errors.New("error writing the file to buffer")
+			}
 		}
 
+		err = stream.SendAndClose(&pb.UploadStatus{Message: "Closing the stream"})
 		if err != nil {
-			return errors.New("error uploading file")
+			return errors.New("error closing the stream")
 		}
 
-		chunk := req.GetChunkData()
-		_, err = fileData.Write((chunk))
+		// Save the file with the recieved contents to this node
+		_ = os.Mkdir("./"+n.storage, os.ModePerm)
+		f, _ := os.Create("./" + n.storage + "/" + filename)
+		defer f.Close()
+		f.Write(fileData.Bytes())
+
+		fmt.Println(filename + " successfully uploaded and stored on " + n.Name)
+	} else {
+		// Setup a new stream with the successor of this node
+		newStream, err := n.successor.client.AddFile(context.Background())
 		if err != nil {
-			return errors.New("error writing the file to buffer")
+			fmt.Println("Could not open stream with sucessor!")
+			return errors.New("error sending opening stream with sucessor")
 		}
 
-		fmt.Println(string(chunk))
+		// Send the filename to the successor
+		req := &pb.UploadFileRequest{
+			Data: &pb.UploadFileRequest_Filename{
+				Filename: filename,
+			},
+		}
+		err = newStream.Send(req)
+		if err != nil {
+			fmt.Println("Could not send filename to sucessor!")
+			return errors.New("error sending filename to successor sucessor")
+		}
+
+		// Recieve the rest of the file
+		for {
+			// Recieve file from whoever is sending it
+			fmt.Println("waiting to recieve more data...")
+			req, err := stream.Recv()
+			if err == io.EOF {
+				fmt.Println("End of file reached!")
+				break
+			}
+
+			if err != nil {
+				fmt.Println("error uploading file")
+				return errors.New("error uploading file")
+			}
+
+			// Get the chunk from the sender
+			chunk := req.GetChunkData()
+
+			// Pass the chunk on to the successor
+			succReq := &pb.UploadFileRequest{
+				Data: &pb.UploadFileRequest_ChunkData{
+					ChunkData: chunk,
+				},
+			}
+			err = newStream.Send(succReq)
+			if err != nil {
+				return errors.New("error writing the file to sucessor's buffer")
+			}
+		}
+
+		err = stream.SendAndClose(&pb.UploadStatus{Message: "Closing the stream"})
+		if err != nil {
+			fmt.Println("error closing the stream with the sender")
+			return errors.New("error closing the stream")
+		}
+
+		_, err = newStream.CloseAndRecv()
+		if err != nil {
+			fmt.Println("error closing the stream with the reciever")
+		}
+
+		fmt.Println(filename + " successfully passed on to successor!")
 	}
 
-	err = stream.SendAndClose(&pb.UploadStatus{Message: "Closing the stream"})
-	if err != nil {
-		return errors.New("error closing the stream")
-	}
-
-	fmt.Println(filename + " successfully uploaded!")
 	return nil
 }
 
@@ -185,9 +277,15 @@ func (n *node) HashString(value string) int {
 	// return int(math.Mod(float64(h.Sum32()), float64(n.ringSize)))
 
 	// Temporarily just place the node in the position specified at end of name: e.g. csuthe 30 will go at position 30
+	// If its a file, have it named testfile_6 for example, and it will go at position 6
 	inputList := strings.Fields(value)
-	pos, _ := strconv.Atoi(inputList[1])
-	return int(math.Mod(float64(pos), float64(10)))
+	if len(inputList) > 1 {
+		pos, _ := strconv.Atoi(inputList[1])
+		return int(math.Mod(float64(pos), float64(10)))
+	}
+	pos := string(value[len(value)-1])
+	temp, _ := strconv.ParseFloat(pos, 64)
+	return int(math.Mod(temp, float64(10)))
 }
 
 // Main method of server
@@ -314,4 +412,3 @@ func (n *node) ConfigureNetworkForNewNode() error {
 	}
 	return nil
 }
-
