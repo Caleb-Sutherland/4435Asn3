@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -46,18 +47,85 @@ func main() {
 		inputList := strings.Fields(input)
 
 		if len(inputList) < 2 {
-			fmt.Print("Invalid command, please use the following: \nType 'search <filename>' to find a file\nType 'add <filename> to add a file\n\n")
+			fmt.Print("Invalid command, please use the following: \nType 'search <filepath>' to find a file\nType 'add <filename> to add a file\n\n")
 			continue
 		}
 
 		command := strings.ToLower(inputList[0])
-		//filename := inputList[1]
+		filepath := inputList[1]
 
 		switch command {
 		case "search":
 			fmt.Print("Search command executing...\n\n")
 		case "add":
 			fmt.Print("Add command executing...\n\n")
+			SendFile(client, filepath)
 		}
 	}
 }
+
+func SendFile(client pb.ConsistentHashClient, filepath string) {
+
+	// Open the file
+	file, err := os.Open(filepath)
+	if err != nil {
+		fmt.Println("Something went wrong when opening the file!")
+		return
+	}
+	defer file.Close()
+
+	// Get the file name from the path
+	pieces := strings.Split(filepath, "/")
+	filename := pieces[len(pieces)-1]
+
+	// Open the stream and send the filename across
+	stream, err := client.AddFile(context.Background())
+	if err != nil {
+		fmt.Println("Could not open stream with server!")
+		return
+	}
+	req := &pb.UploadFileRequest{
+		Data: &pb.UploadFileRequest_Filename{
+			Filename: filename,
+		},
+	}
+	err = stream.Send(req)
+	if err != nil {
+		fmt.Println("Could not send filename")
+		return
+	}
+
+	// Read the file and send it across the stream in chunks
+	reader := bufio.NewReader(file)
+	buffer := make([]byte, 1024)
+	for {
+		n, err := reader.Read(buffer)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println("Could not read chunk from file")
+			return
+		}
+
+		req := &pb.UploadFileRequest{
+			Data: &pb.UploadFileRequest_ChunkData{
+				ChunkData: buffer[:n],
+			},
+		}
+
+		err = stream.Send(req)
+		if err != nil {
+			fmt.Println("Could not send file to server")
+		}
+	}
+
+	// close stream
+	_, err = stream.CloseAndRecv()
+	if err != nil {
+		fmt.Println("Could not close the stream properly")
+	}
+
+	fmt.Println("File uploaded successfully!")
+}
+
