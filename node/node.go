@@ -90,7 +90,7 @@ func (n *node) GetNodeInfo(ctx context.Context, in *pb.Empty) (*pb.NodeInfo, err
 
 // Test connection with a client
 func (n *node) TestConnection(ctx context.Context, in *pb.TestRequest) (*pb.GenericResponse, error) {
-	return &pb.GenericResponse{Message: "Successfully connected..."}, nil
+	return &pb.GenericResponse{Message: "Successfully connected to node " + n.Name + "..."}, nil
 }
 
 // Checks if a newly added node is the successor or predecessor of this node, returns if it is

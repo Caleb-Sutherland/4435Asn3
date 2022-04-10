@@ -110,7 +110,7 @@ func main() {
 
 	// Indicate that the test message was recieved successfully
 	fmt.Println(response.Message)
-	fmt.Print("\nWelcome to the consistent hashing network...\nType 'query <filename>' to retrieve a file\nType 'add <filepath> to add a file into the network\n\n")
+	fmt.Print("\nWelcome to the consistent hashing network...\nType 'query <filename>' to retrieve a file\nType 'add <filepath>' to add a file into the network\n\n")
 
 	// Set up this client as a server, so that it can also receive files from the network, upon request
 	ServerListen(localPort)
@@ -139,7 +139,7 @@ func TakeCommands(client pb.ConsistentHashClient, port string) {
 		inputList := strings.Fields(input)
 
 		if len(inputList) < 2 {
-			fmt.Print("Invalid command, please use the following: \nType 'query <filename>' to retrieve a file\nType 'add <filepath> to add a file into the network\n\n")
+			fmt.Print("Invalid command, please use the following: \nType 'query <filename>' to retrieve a file\nType 'add <filepath>' to add a file into the network\n\n")
 			continue
 		}
 
