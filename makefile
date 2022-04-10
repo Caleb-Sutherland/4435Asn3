@@ -1,10 +1,8 @@
 compileproto: 
 	protoc --go_out=. --go_opt=paths=source_relative \
 	--go-grpc_out=require_unimplemented_servers=false:. \
-	--go-grpc_opt=paths=source_relative proto/consistenthash.proto
-	protoc --go_out=. --go_opt=paths=source_relative \
-	--go-grpc_out=require_unimplemented_servers=false:. \
-	--go-grpc_opt=paths=source_relative proto/client.proto
+	--go-grpc_opt=paths=source_relative proto/*.proto
+
 dep:
 	go mod init 4435Asn3
 	go mod tidy

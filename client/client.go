@@ -3,33 +3,43 @@ package main
 import (
 	pb "4435Asn3/proto"
 	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"time"
 
 	"google.golang.org/grpc"
 )
-type clientserver struct{
+
+type clientserver struct {
 	pb.UnimplementedClientReceiveServiceServer
+}
+
+var client_name = ""
+
+func (c *clientserver) NotifyFileNotFound(ctx context.Context, in *pb.FileNotFoundRequest) (*pb.FileNotFoundResponse, error) {
+	fmt.Println("The file you requested could not be found in the network!")
+	return &pb.FileNotFoundResponse{Message: "Message received"}, nil
 }
 
 func (c *clientserver) ReceiveFile(stream pb.ClientReceiveService_ReceiveFileServer) error {
 	req, err := stream.Recv()
-	if err != nil{
+	if err != nil {
 		fmt.Println("Could not receive file from node")
-		return erros.New("failed to upload file")
+		return errors.New("failed to upload file")
 	}
 	fileData := bytes.Buffer{}
 	filename := req.GetFilename()
 	fmt.Println("RECEIVING: " + filename)
 
 	for {
-		fmt.Println("waiting to recieve more data...")
 		req, err := stream.Recv()
 		if err == io.EOF {
 			fmt.Println("End of file reached!")
@@ -45,32 +55,38 @@ func (c *clientserver) ReceiveFile(stream pb.ClientReceiveService_ReceiveFileSer
 		if err != nil {
 			return errors.New("error writing the file to buffer")
 		}
-
-		fmt.Println(string(chunk))	
 	}
 
-	err = stream.SendAndClose(&pb.UploadStatus{Message: "Closing the stream"})
+	err = stream.SendAndClose(&pb.AddStatus{Message: "Closing the stream"})
 	if err != nil {
 		return errors.New("error closing the stream")
 	}
 
-	fmt.Println(filename + " successfully uploaded!")
+	// Save the file with the recieved contents to this node
+	_ = os.Mkdir("./"+client_name, os.ModePerm)
+	f, _ := os.Create("./" + client_name + "/" + filename)
+	defer f.Close()
+	f.Write(fileData.Bytes())
+
+	fmt.Println(filename + " successfully downloaded and stored for client: " + client_name)
 	return nil
 
 }
-
 
 func main() {
 
 	// Determine the port being used for the server we are connecting to
 	args := os.Args[1:]
-	if len(args) < 1 {
-		fmt.Println("Arguments required: <port_of_node_to_connect_to>")
+	if len(args) < 3 {
+		fmt.Println("Arguments required: <port_of_node_to_connect_to> <port_for_this_client_to_be_reached> <client_name>")
 		return
 	}
-	port := args[0]
+	connectPort := args[0]
+	localPort := args[1]
+	name := args[2]
+	client_name = name
 
-	addr := flag.String("addr", "localhost:"+port, "the address to connect to")
+	addr := flag.String("addr", "localhost:"+connectPort, "the address to connect to")
 
 	// Connection to server with client
 	conn, err := grpc.Dial(*addr, grpc.WithInsecure())
@@ -82,14 +98,40 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	response, _ := client.TestConnection(ctx, &pb.TestRequest{Message: "Hello"})
+	// Test connnection with the node we are connecting to
+	response, err := client.TestConnection(ctx, &pb.TestRequest{Message: "Hello"})
+	if err != nil {
+		fmt.Println("Failed to connect to server...")
+		return
+	}
 
-	//Set up client server
-	c := grpc.NewServer()
-	pb.RegisterClientReceiveServiceServer(c, &clientserver{})
+	// Recieve commands
+	go TakeCommands(client, localPort)
 
-	fmt.Println(response)
-	fmt.Print("\nWelcome to the consistent hashing network...\nType 'search <filename>' to find a file\nType 'add <filename> to add a file\n\n")
+	// Indicate that the test message was recieved successfully
+	fmt.Println(response.Message)
+	fmt.Print("\nWelcome to the consistent hashing network...\nType 'query <filename>' to retrieve a file\nType 'add <filepath>' to add a file into the network\n\n")
+
+	// Set up this client as a server, so that it can also receive files from the network, upon request
+	ServerListen(localPort)
+}
+
+// Function to be called as a go routine
+func ServerListen(port string) {
+	//Set up this client as a server
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	_n := grpc.NewServer() // n is for serving purpose
+	pb.RegisterClientReceiveServiceServer(_n, &clientserver{})
+	//reflection.Register(_n)
+	if err := _n.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
+func TakeCommands(client pb.ConsistentHashClient, port string) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("Enter command: ")
@@ -97,7 +139,7 @@ func main() {
 		inputList := strings.Fields(input)
 
 		if len(inputList) < 2 {
-			fmt.Print("Invalid command, please use the following: \nType 'search <filepath>' to find a file\nType 'add <filename> to add a file\n\n")
+			fmt.Print("Invalid command, please use the following: \nType 'query <filename>' to retrieve a file\nType 'add <filepath>' to add a file into the network\n\n")
 			continue
 		}
 
@@ -105,8 +147,9 @@ func main() {
 		filepath := inputList[1]
 
 		switch command {
-		case "search":
+		case "query":
 			fmt.Print("Search command executing...\n\n")
+			QueryFile(client, filepath, port)
 		case "add":
 			fmt.Print("Add command executing...\n\n")
 			SendFile(client, filepath)
@@ -114,12 +157,13 @@ func main() {
 	}
 }
 
+// Send a file into the network
 func SendFile(client pb.ConsistentHashClient, filepath string) {
 
 	// Open the file
 	file, err := os.Open(filepath)
 	if err != nil {
-		fmt.Println("Something went wrong when opening the file!")
+		fmt.Println("Something went wrong when opening the file! Please try putting './' before the filename, or the path to the file!")
 		return
 	}
 	defer file.Close()
@@ -179,3 +223,6 @@ func SendFile(client pb.ConsistentHashClient, filepath string) {
 	fmt.Println("File uploaded successfully!")
 }
 
+func QueryFile(client pb.ConsistentHashClient, filename string, returnAddress string) {
+	client.GetFile(context.Background(), &pb.GetFileRequest{Filename: filename, ReturnAddress: ":" + returnAddress})
+}

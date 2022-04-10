@@ -4,7 +4,7 @@
 // - protoc             v3.14.0
 // source: proto/client.proto
 
-package client_proto
+package consistenthash_proto
 
 import (
 	context "context"
@@ -23,6 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ClientReceiveServiceClient interface {
 	ReceiveFile(ctx context.Context, opts ...grpc.CallOption) (ClientReceiveService_ReceiveFileClient, error)
+	NotifyFileNotFound(ctx context.Context, in *FileNotFoundRequest, opts ...grpc.CallOption) (*FileNotFoundResponse, error)
 }
 
 type clientReceiveServiceClient struct {
@@ -34,7 +35,7 @@ func NewClientReceiveServiceClient(cc grpc.ClientConnInterface) ClientReceiveSer
 }
 
 func (c *clientReceiveServiceClient) ReceiveFile(ctx context.Context, opts ...grpc.CallOption) (ClientReceiveService_ReceiveFileClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClientReceiveService_ServiceDesc.Streams[0], "/client.ClientReceiveService/ReceiveFile", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClientReceiveService_ServiceDesc.Streams[0], "/consistenthash.ClientReceiveService/ReceiveFile", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -43,8 +44,8 @@ func (c *clientReceiveServiceClient) ReceiveFile(ctx context.Context, opts ...gr
 }
 
 type ClientReceiveService_ReceiveFileClient interface {
-	Send(*UploadFileRequest) error
-	CloseAndRecv() (*UploadStatus, error)
+	Send(*AddFileRequest) error
+	CloseAndRecv() (*AddStatus, error)
 	grpc.ClientStream
 }
 
@@ -52,19 +53,28 @@ type clientReceiveServiceReceiveFileClient struct {
 	grpc.ClientStream
 }
 
-func (x *clientReceiveServiceReceiveFileClient) Send(m *UploadFileRequest) error {
+func (x *clientReceiveServiceReceiveFileClient) Send(m *AddFileRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *clientReceiveServiceReceiveFileClient) CloseAndRecv() (*UploadStatus, error) {
+func (x *clientReceiveServiceReceiveFileClient) CloseAndRecv() (*AddStatus, error) {
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
-	m := new(UploadStatus)
+	m := new(AddStatus)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (c *clientReceiveServiceClient) NotifyFileNotFound(ctx context.Context, in *FileNotFoundRequest, opts ...grpc.CallOption) (*FileNotFoundResponse, error) {
+	out := new(FileNotFoundResponse)
+	err := c.cc.Invoke(ctx, "/consistenthash.ClientReceiveService/NotifyFileNotFound", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ClientReceiveServiceServer is the server API for ClientReceiveService service.
@@ -72,6 +82,7 @@ func (x *clientReceiveServiceReceiveFileClient) CloseAndRecv() (*UploadStatus, e
 // for forward compatibility
 type ClientReceiveServiceServer interface {
 	ReceiveFile(ClientReceiveService_ReceiveFileServer) error
+	NotifyFileNotFound(context.Context, *FileNotFoundRequest) (*FileNotFoundResponse, error)
 }
 
 // UnimplementedClientReceiveServiceServer should be embedded to have forward compatible implementations.
@@ -80,6 +91,9 @@ type UnimplementedClientReceiveServiceServer struct {
 
 func (UnimplementedClientReceiveServiceServer) ReceiveFile(ClientReceiveService_ReceiveFileServer) error {
 	return status.Errorf(codes.Unimplemented, "method ReceiveFile not implemented")
+}
+func (UnimplementedClientReceiveServiceServer) NotifyFileNotFound(context.Context, *FileNotFoundRequest) (*FileNotFoundResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NotifyFileNotFound not implemented")
 }
 
 // UnsafeClientReceiveServiceServer may be embedded to opt out of forward compatibility for this service.
@@ -98,8 +112,8 @@ func _ClientReceiveService_ReceiveFile_Handler(srv interface{}, stream grpc.Serv
 }
 
 type ClientReceiveService_ReceiveFileServer interface {
-	SendAndClose(*UploadStatus) error
-	Recv() (*UploadFileRequest, error)
+	SendAndClose(*AddStatus) error
+	Recv() (*AddFileRequest, error)
 	grpc.ServerStream
 }
 
@@ -107,25 +121,48 @@ type clientReceiveServiceReceiveFileServer struct {
 	grpc.ServerStream
 }
 
-func (x *clientReceiveServiceReceiveFileServer) SendAndClose(m *UploadStatus) error {
+func (x *clientReceiveServiceReceiveFileServer) SendAndClose(m *AddStatus) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *clientReceiveServiceReceiveFileServer) Recv() (*UploadFileRequest, error) {
-	m := new(UploadFileRequest)
+func (x *clientReceiveServiceReceiveFileServer) Recv() (*AddFileRequest, error) {
+	m := new(AddFileRequest)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
+func _ClientReceiveService_NotifyFileNotFound_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FileNotFoundRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientReceiveServiceServer).NotifyFileNotFound(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/consistenthash.ClientReceiveService/NotifyFileNotFound",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientReceiveServiceServer).NotifyFileNotFound(ctx, req.(*FileNotFoundRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClientReceiveService_ServiceDesc is the grpc.ServiceDesc for ClientReceiveService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ClientReceiveService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "client.ClientReceiveService",
+	ServiceName: "consistenthash.ClientReceiveService",
 	HandlerType: (*ClientReceiveServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "NotifyFileNotFound",
+			Handler:    _ClientReceiveService_NotifyFileNotFound_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "ReceiveFile",

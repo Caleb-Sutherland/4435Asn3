@@ -1,20 +1,28 @@
 syntax = "proto3";
-package client;
+package consistenthash;
 
-
-option go_package = "proto/client.proto;client_proto";
+option go_package = "proto/consistenthash.proto;consistenthash_proto";
 
 service ClientReceiveService {
-    rpc ReceiveFile(stream UploadFileRequest) returns(UploadStatus) {}
+    rpc ReceiveFile(stream AddFileRequest) returns(AddStatus) {}
+    rpc NotifyFileNotFound(FileNotFoundRequest) returns(FileNotFoundResponse) {}
 }
 
-message UploadFileRequest {
+message AddFileRequest {
     oneof data {
         string filename = 1;
         bytes chunk_data = 2;
     }
 }
 
-message UploadStatus {
+message AddStatus {
+    string Message = 1;
+}
+
+message FileNotFoundRequest {
+    string Message = 1;
+}
+
+message FileNotFoundResponse {
     string Message = 1;
 }
