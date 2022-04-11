@@ -81,6 +81,7 @@ func (n *node) UpdatePredecessor(ctx context.Context, in *pb.UpdateNeighbourRequ
 	conn := GetConnection(in.Address)
 	n.predecessor = &neighbour{position: int(in.Position), client: conn}
 	fmt.Println("Predecessor set to node at position " + strconv.Itoa(int(in.Position)) + "...")
+	n.SendAllFilesToPredecessor()
 	return &pb.UpdateNeighbourResponse{Message: "Success"}, nil
 }
 
@@ -532,7 +533,7 @@ func (n *node) ConfigureNetworkForNewNode() error {
 // When a node shuts down, notify the network and send files to the successor to be stored
 func (n *node) Shutdown() {
 
-	fmt.Println("Node shutting down...")
+	fmt.Println("\nNode shutting down...")
 
 	// Remove the node from the ring, update the successor's predecessor, and the predecessor's successor
 	if n.successor != nil && n.predecessor != nil && n.successor.position != n.predecessor.position {
@@ -564,65 +565,149 @@ func (n *node) SendAllFilesToSuccessor() {
 	}
 
 	for _, item := range items {
-		// Open the file
-		file, err := os.Open("./" + n.storage + "/" + item.Name())
+		n.SendFileToSuccessor(item.Name())
+	}
+
+	err = os.RemoveAll("./" + n.storage)
+	if err != nil {
+		fmt.Println("Could not delete contents when shutting down!")
+	}
+}
+
+func (n *node) SendFileToSuccessor(filename string) {
+	// Open the file
+	file, err := os.Open("./" + n.storage + "/" + filename)
+	if err != nil {
+		fmt.Println("Something went wrong when opening the file!")
+		return
+	}
+	defer file.Close()
+
+	// Open the stream and send the filename across
+	stream, err := n.successor.client.AddFile(context.Background())
+	if err != nil {
+		fmt.Println("Could not open stream with server!")
+		return
+	}
+	req := &pb.UploadFileRequest{
+		Data: &pb.UploadFileRequest_Filename{
+			Filename: filename,
+		},
+	}
+	err = stream.Send(req)
+	if err != nil {
+		fmt.Println("Could not send filename")
+		return
+	}
+
+	// Read the file and send it across the stream in chunks
+	reader := bufio.NewReader(file)
+	buffer := make([]byte, 1024)
+	for {
+		n, err := reader.Read(buffer)
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			fmt.Println("Something went wrong when opening the file!")
+			fmt.Println("Could not read chunk from file")
 			return
 		}
-		defer file.Close()
 
-		// Get the file name
-		filename := item.Name()
-
-		// Open the stream and send the filename across
-		stream, err := n.successor.client.AddFile(context.Background())
-		if err != nil {
-			fmt.Println("Could not open stream with server!")
-			return
-		}
 		req := &pb.UploadFileRequest{
-			Data: &pb.UploadFileRequest_Filename{
-				Filename: filename,
+			Data: &pb.UploadFileRequest_ChunkData{
+				ChunkData: buffer[:n],
 			},
 		}
+
 		err = stream.Send(req)
 		if err != nil {
-			fmt.Println("Could not send filename")
+			fmt.Println("Could not send file to server")
+		}
+	}
+
+	// close stream
+	_, err = stream.CloseAndRecv()
+	if err != nil {
+		fmt.Println("Could not close the stream properly")
+	}
+
+	fmt.Println("File successfully sent to successor!")
+}
+
+func (n *node) SendAllFilesToPredecessor() {
+	fmt.Println("Sending all necessary files to predecessor!")
+	items, err := ioutil.ReadDir("./" + n.storage)
+	if err != nil {
+		fmt.Println("There are no files stored on this node that need to be sent...")
+		return
+	}
+
+	for _, item := range items {
+		// If a file doesn't belong here anymore, it must belong in the predecessor
+		if !n.BelongsHere(item.Name()) {
+			n.SendFileToSuccessor(item.Name())
+			os.Remove("./" + n.storage + "/" + item.Name())
+		}
+	}
+	fmt.Println("Successfully sent all necessary files...")
+}
+
+func (n *node) SendFileToPredecessor(filename string) {
+	// Open the file
+	file, err := os.Open("./" + n.storage + "/" + filename)
+	if err != nil {
+		fmt.Println("Something went wrong when opening the file!")
+		return
+	}
+	defer file.Close()
+
+	// Open the stream and send the filename across
+	stream, err := n.predecessor.client.AddFile(context.Background())
+	if err != nil {
+		fmt.Println("Could not open stream with server!")
+		return
+	}
+	req := &pb.UploadFileRequest{
+		Data: &pb.UploadFileRequest_Filename{
+			Filename: filename,
+		},
+	}
+	err = stream.Send(req)
+	if err != nil {
+		fmt.Println("Could not send filename")
+		return
+	}
+
+	// Read the file and send it across the stream in chunks
+	reader := bufio.NewReader(file)
+	buffer := make([]byte, 1024)
+	for {
+		n, err := reader.Read(buffer)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println("Could not read chunk from file")
 			return
 		}
 
-		// Read the file and send it across the stream in chunks
-		reader := bufio.NewReader(file)
-		buffer := make([]byte, 1024)
-		for {
-			n, err := reader.Read(buffer)
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				fmt.Println("Could not read chunk from file")
-				return
-			}
-
-			req := &pb.UploadFileRequest{
-				Data: &pb.UploadFileRequest_ChunkData{
-					ChunkData: buffer[:n],
-				},
-			}
-
-			err = stream.Send(req)
-			if err != nil {
-				fmt.Println("Could not send file to server")
-			}
+		req := &pb.UploadFileRequest{
+			Data: &pb.UploadFileRequest_ChunkData{
+				ChunkData: buffer[:n],
+			},
 		}
 
-		// close stream
-		_, err = stream.CloseAndRecv()
+		err = stream.Send(req)
 		if err != nil {
-			fmt.Println("Could not close the stream properly")
+			fmt.Println("Could not send file to server")
 		}
-
-		fmt.Println("File uploaded successfully!")
 	}
+
+	// close stream
+	_, err = stream.CloseAndRecv()
+	if err != nil {
+		fmt.Println("Could not close the stream properly")
+	}
+
+	fmt.Println("File uploaded successfully!")
 }
