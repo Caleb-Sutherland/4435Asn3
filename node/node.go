@@ -512,7 +512,8 @@ func (n *node) ConfigureNetworkForNewNode() error {
 
 		// If there was an error while notifying other nodes, shut down this node
 		if err != nil {
-			return err
+			fmt.Println(err)
+			n.Shutdown()
 		}
 
 		// If the node contacted is the sucessor of this node, store it
@@ -527,6 +528,7 @@ func (n *node) ConfigureNetworkForNewNode() error {
 			fmt.Println("Predecessor set to node at position " + strconv.Itoa(n.predecessor.position) + " of the ring...")
 		}
 	}
+
 	return nil
 }
 
@@ -645,7 +647,7 @@ func (n *node) SendAllFilesToPredecessor() {
 	for _, item := range items {
 		// If a file doesn't belong here anymore, it must belong in the predecessor
 		if !n.BelongsHere(item.Name()) {
-			n.SendFileToSuccessor(item.Name())
+			n.SendFileToPredecessor(item.Name())
 			os.Remove("./" + n.storage + "/" + item.Name())
 		}
 	}
@@ -709,5 +711,5 @@ func (n *node) SendFileToPredecessor(filename string) {
 		fmt.Println("Could not close the stream properly")
 	}
 
-	fmt.Println("File uploaded successfully!")
+	fmt.Println("Successfully sent file to predecessor!")
 }
